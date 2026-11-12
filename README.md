@@ -152,6 +152,49 @@ Or complete the installation via the Moodle web interface: **Site administration
 
 ---
 
+## AI-Powered Terminology Checker
+
+The CourseChecker includes an AI-powered terminology checker
+that identifies potentially outdated names of organizations,
+institutions, and products in Moodle course content.
+
+The checker detects possible official renamings and provides
+suggestions for review.
+
+### API Configuration
+
+The checker supports the following AI providers:
+
+- GWDG Academic Cloud
+- MyLab (TH Lübeck)
+
+API keys are configured through the Moodle administration interface:
+
+Site administration → Plugins → CourseChecker → Settings
+
+Available settings:
+
+- GWDG API Key
+- MyLab API Key
+
+API keys must not be stored in the source code or committed
+to Git. Environment variables are not required.
+
+### Model Selection
+
+Administrators can select an AI model from the dropdown
+before starting a terminology check.
+
+### Technical Notes
+
+- A valid API key is required for the selected provider.
+- Missing API keys result in an error message.
+- Course texts are processed in batches.
+- Multiple API requests can be processed in parallel.
+- Successful analysis results are cached for up to 7 days.
+- H5P package contents, quiz questions, uploaded files,
+  and user contributions are not analyzed.
+
 ## ⚙️ For Developers
 
 [Developer Guide](README_DEV.md).
