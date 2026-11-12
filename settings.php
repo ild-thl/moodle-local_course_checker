@@ -77,7 +77,6 @@ if ($hassiteconfig) {
             'API-Schlüssel für MyLab der TH Lübeck.',
             ''
         ));
-
     }
     $ADMIN->add('local_course_checker', $settings);
     unset($settings);

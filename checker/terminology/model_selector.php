@@ -1,12 +1,37 @@
 <?php
+// This file is part of Moodle - https://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <https://www.gnu.org/licenses/>.
 // Einbinden in local/course_checker/index.php (innerhalb von if ($checkerexists)).
 // Erwartet die lokalen Variablen $courseid und $context aus index.php.
+
+/**
+ * Displays the AI model selector for the terminology checker.
+ *
+ * @package    coursechecker_terminology
+ * @copyright  2026 Technische Hochschule Lübeck
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+
 defined('MOODLE_INTERNAL') || die();
 
 if (has_capability('local/course_checker:runcheck', $context)) {
-    $models = require __DIR__ . '/models.php';
-    $selected = (string)(get_config('coursechecker_terminology',
-        'ui_model_course_' . (int)$courseid) ?: 'deepseek-v4.1-flash-1017');
+    $models = require(__DIR__ . '/models.php');
+    $selected = (string)(get_config(
+        'coursechecker_terminology',
+        'ui_model_course_' . (int)$courseid
+    ) ?: 'deepseek-v4.1-flash-1017');
     if (!isset($models[$selected])) {
         $selected = 'deepseek-v4.1-flash-1017';
     }
@@ -37,10 +62,12 @@ if (has_capability('local/course_checker:runcheck', $context)) {
         'type' => 'submit', 'class' => 'btn btn-primary mb-2',
     ]);
     echo html_writer::end_tag('form');
-    echo html_writer::tag('small',
+    echo html_writer::tag(
+        'small',
         'Startet nur den Terminologie-Checker mit dem ausgewählten Modell. ' .
         'Andere Prüfungen werden nicht neu gestartet. Bitte nur einmal klicken.',
-        ['class' => 'text-muted']);
+        ['class' => 'text-muted']
+    );
     echo html_writer::end_div();
     echo html_writer::end_div();
 }

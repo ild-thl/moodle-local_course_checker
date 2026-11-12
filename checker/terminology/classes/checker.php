@@ -1,4 +1,19 @@
 <?php
+// This file is part of Moodle - https://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <https://www.gnu.org/licenses/>.
+
 namespace coursechecker_terminology;
 
 use local_course_checker\model\check_plugin_interface;
@@ -30,24 +45,75 @@ use stdClass;
  * während eines laufenden Prüflaufs geschützt.
  *
  * Keine H5P-Paketinhalte, Quizfragen, PDFs, Word-Dateien oder Nutzerbeiträge.
+ *
+ * @package    coursechecker_terminology
+ * @copyright  2026 Technische Hochschule Lübeck
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class checker implements check_plugin_interface {
+    /**
+     * Whether debug files containing course texts may be written.
+     */
     private const DEBUG_LLM = false; // Nur lokal! Debugdateien enthalten Moodle-Kurstexte.
+    /**
+     * Maximum number of characters per original request batch.
+     */
     private const BATCH_CHARS = 6000;
+    /**
+     * Maximum number of parallel requests per batch round.
+     */
     private const PARALLEL = 2; // Vorsichtiger Startwert; erst nach Messung erhöhen.
+    /**
+     * Maximum time budget in seconds for one checker task.
+     */
     private const TIME_BUDGET = 120; // Maximal geplante Task-Zeit; die Rundengrenze wird beachtet.
+    /**
+     * Maximum number of attempts for an original request batch.
+     */
     private const MAX_ATTEMPTS_PER_BATCH = 1; // Grosses Paket nur einmal versuchen.
+    /**
+     * Maximum number of attempts for smaller retry batches.
+     */
     private const MAX_ATTEMPTS_RECHECK = 2; // Kleinere Teilpakete ggf. nochmals.
+    /**
+     * Lifetime of cached AI analyses in seconds.
+     */
     private const CACHE_TTL_SECONDS = 604800; // 7 Tage; Kurs- und Promptversion im Hash.
+    /**
+     * Delay in seconds before retrying a failed request.
+     */
     private const RETRY_PAUSE = 5;
+    /**
+     * Connection timeout in seconds for API requests.
+     */
     private const CONNECT_TIMEOUT = 15;
+    /**
+     * Overall timeout in seconds for API requests.
+     */
     private const REQUEST_TIMEOUT = 70;
+    /**
+     * Moodle component used for the terminology checker configuration.
+     */
     private const COMPONENT = 'coursechecker_terminology';
+    /**
+     * Version marker included in fingerprints and cache keys.
+     */
     private const CHECKER_VERSION = 'cache-split-v4-20261105';
 
-    /** Anzahl aussortierter generischer Platzhalter in der aktuellen Extraktion. */
+    /**
+     * Number of skipped generic placeholder texts in the current extraction.
+     *
+     * @var int
+     */
     private int $skippedplaceholders = 0;
 
+    /**
+     * Checks a Moodle course for potentially outdated names and queues continuation tasks.
+     *
+     * @param stdClass $course The Moodle course.
+     * @param check $check The checker result record.
+     * @return void
+     */
     public function run(stdClass $course, check $check): void {
         $checkid = (int)$check->get('id');
         $courseid = (int)$course->id;
@@ -61,8 +127,10 @@ class checker implements check_plugin_interface {
         // Keine alten/überholten Folge-Tasks in einen neuen Prüflauf mischen.
         $stored = get_config(self::COMPONENT, $statekey);
         if ($resumeid !== '') {
-            if ($resumecheckid !== $checkid || !$stored ||
-                    (int)get_config(self::COMPONENT, $activekey) !== $checkid) {
+            if (
+                $resumecheckid !== $checkid || !$stored ||
+                    (int)get_config(self::COMPONENT, $activekey) !== $checkid
+            ) {
                 mtrace('Terminology: Veralteter oder bereits beendeter Folgetask – ignoriert.');
                 return;
             }
@@ -98,7 +166,6 @@ class checker implements check_plugin_interface {
             return;
         }
 
-
         $selectedmodel = trim((string)(
         $course->_terminology_selected_model ?? ''
         ));
@@ -128,11 +195,13 @@ class checker implements check_plugin_interface {
             // Modell pro Testlauf festhalten. Bei Folgetasks immer den im
             // Laufstatus gespeicherten Wert verwenden – auch wenn die UI-Auswahl
             // zwischenzeitlich geändert wurde.
-            $availablemodels = require dirname(__DIR__) . '/models.php';
+            $availablemodels = require(dirname(__DIR__) . '/models.php');
             $requestedmodel = trim((string)($course->_terminology_selected_model ?? ''));
             if ($requestedmodel === '') {
-                $requestedmodel = (string)(get_config(self::COMPONENT,
-                    'ui_model_course_' . $courseid) ?: 'deepseek-v4.1-flash-1017');
+                $requestedmodel = (string)(get_config(
+                    self::COMPONENT,
+                    'ui_model_course_' . $courseid
+                ) ?: 'deepseek-v4.1-flash-1017');
             }
             $model = $state !== null ? (string)($state['model'] ?? '') : $requestedmodel;
             if (!array_key_exists($model, $availablemodels)) {
@@ -256,7 +325,8 @@ class checker implements check_plugin_interface {
                 'skippedplaceholders' => $this->skippedplaceholders,
                 'duplicatecount' => array_sum(array_map(
                     static fn(array $source): int => count($source['additional_locations'] ?? []),
-                    $sources)),
+                    $sources
+                )),
                 'terms' => [],
                 'warningkeys' => [],
                 'findingcount' => 0,
@@ -267,17 +337,21 @@ class checker implements check_plugin_interface {
                 'failed' => [], // Paketindex => Grund des endgültigen Fehlers.
             ];
             $this->save_state($statekey, $state);
-            $this->update_progress($check,
+            $this->update_progress(
+                $check,
                 'Prüfung gestartet mit Modell ' . $model . ': 0 von ' . $total .
                 ' Paketen abgeschlossen. ' .
                 count($sources) . ' eindeutige Textstellen; ' .
                 $state['duplicatecount'] . ' Duplikate und ' . $state['skippedplaceholders'] .
-                ' Platzhalter ausgelassen. Noch NICHT vollständig.');
+                ' Platzhalter ausgelassen. Noch NICHT vollständig.'
+            );
             if (self::DEBUG_LLM) {
                 $this->debug_overview($courseid, $state, $batches, $model);
             }
-        } else if ($fingerprint !== ($state['fingerprint'] ?? '') ||
-                $total !== (int)($state['total'] ?? -1)) {
+        } else if (
+            $fingerprint !== ($state['fingerprint'] ?? '') ||
+                $total !== (int)($state['total'] ?? -1)
+        ) {
             $this->fail($check, 'Die Kursinhalte oder die Prüfkonfiguration wurden während ' .
                 'der laufenden Prüfung verändert. Bitte den Kurs neu prüfen.');
             $this->clear_state($statekey, $activekey, $checkid);
@@ -296,22 +370,33 @@ class checker implements check_plugin_interface {
                     $state['queue'] = array_map('intval', array_keys($state['failed']));
                     $state['attempts'] = [];
                     $this->save_state($statekey, $state);
-                    $this->update_progress($check,
+                    $this->update_progress(
+                        $check,
                         'Regulärer Durchgang abgeschlossen: ' . $state['successful'] . '/' .
                         $total . ' Pakete erfolgreich. ' . count($state['failed']) .
-                        ' zurückgestellt. Nachprüfung wird gestartet. Noch NICHT vollständig.');
+                        ' zurückgestellt. Nachprüfung wird gestartet. Noch NICHT vollständig.'
+                    );
                     continue;
                 }
-                $this->finish_run($check, $state, $model, $provider,
-                    $statekey, $activekey, $checkid);
+                $this->finish_run(
+                    $check,
+                    $state,
+                    $model,
+                    $provider,
+                    $statekey,
+                    $activekey,
+                    $checkid
+                );
                 return;
             }
 
             // Nur eine neue API-Runde starten, wenn ausreichend Restzeit für
             // deren vollständigen Timeout und eine kleine Reserve vorhanden ist.
             // So hängt ein einzelner Moodle-Task nicht beliebig lange fest.
-            if ($completedrounds > 0 &&
-                    microtime(true) + self::REQUEST_TIMEOUT + 10 >= $deadline) {
+            if (
+                $completedrounds > 0 &&
+                    microtime(true) + self::REQUEST_TIMEOUT + 10 >= $deadline
+            ) {
                 $this->save_state($statekey, $state);
                 $this->update_progress($check, $this->progress_text($state));
                 $this->queue_next($course, $check, $state, 2);
@@ -330,8 +415,11 @@ class checker implements check_plugin_interface {
             // Nach einem Timeout das fehlgeschlagene Originalpaket aufteilen.
             // Pro Nachpruefung hoechstens ein Originalpaket, damit die Anzahl
             // paralleler Child-Requests bei PARALLEL bleibt.
-            $round = array_slice($state['queue'], 0,
-                $phase === 'recheck' ? 1 : self::PARALLEL);
+            $round = array_slice(
+                $state['queue'],
+                0,
+                $phase === 'recheck' ? 1 : self::PARALLEL
+            );
             $roundstart = microtime(true);
             mtrace('Terminology: check=' . $checkid . ' Runde mit Paketen ' .
                 implode(',', array_map(static fn($i): int => (int)$i + 1, $round)) .
@@ -369,8 +457,10 @@ class checker implements check_plugin_interface {
                         ],
                         'temperature' => 0,
                     ];
-                    $requestbody = json_encode($data,
-                        JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+                    $requestbody = json_encode(
+                        $data,
+                        JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE
+                    );
                     $filenames[$jobid] = 'course_' . $courseid . '_' . $state['runid'] .
                         '_batch_' . sprintf('%03d', $index + 1) .
                         ($phase === 'recheck' ? '_nachpruefung_teil_' . ($partindex + 1) : '') .
@@ -385,8 +475,10 @@ class checker implements check_plugin_interface {
                     }
                     $bodies[$jobid] = $requestbody;
                     $this->debug_write($filenames[$jobid] . '_01_request.json', $requestbody);
-                    $this->debug_write($filenames[$jobid] . '_02_kurstext.txt',
-                        $data['messages'][1]['content']);
+                    $this->debug_write(
+                        $filenames[$jobid] . '_02_kurstext.txt',
+                        $data['messages'][1]['content']
+                    );
                 }
             }
 
@@ -444,7 +536,10 @@ class checker implements check_plugin_interface {
                             }
                         } else {
                             [$analysis, $error] = $this->parse_response(
-                                $res['response'], $batchno, $filenames[$jobid]);
+                                $res['response'],
+                                $batchno,
+                                $filenames[$jobid]
+                            );
                         }
                     }
                     if ($error === null && $analysis !== null) {
@@ -485,7 +580,9 @@ class checker implements check_plugin_interface {
             }
 
             $state['queue'] = array_values(array_merge(
-                array_slice($state['queue'], count($round)), $retry));
+                array_slice($state['queue'], count($round)),
+                $retry
+            ));
             $this->save_state($statekey, $state);
             $this->update_progress($check, $this->progress_text($state));
 
@@ -625,8 +722,12 @@ class checker implements check_plugin_interface {
      */
     private function split_batch_for_retry(array $batch): array {
         $matches = [];
-        preg_match_all('/(\[QUELLE (Q[0-9]+) \| [^\n]+\]\n)(.*?)(?=\[QUELLE Q[0-9]+ \| |\z)/su',
-            $batch['text'], $matches, PREG_SET_ORDER);
+        preg_match_all(
+            '/(\[QUELLE (Q[0-9]+) \| [^\n]+\]\n)(.*?)(?=\[QUELLE Q[0-9]+ \| |\z)/su',
+            $batch['text'],
+            $matches,
+            PREG_SET_ORDER
+        );
         if (!$matches) {
             return [$batch];
         }
@@ -648,12 +749,16 @@ class checker implements check_plugin_interface {
                 continue;
             }
             $entry = $header . $body . "\n\n";
-            if ($part === 0 &&
-                    $this->utf8_length($out[0]['text'] . $entry) > $target) {
+            if (
+                $part === 0 &&
+                    $this->utf8_length($out[0]['text'] . $entry) > $target
+            ) {
                 $available = $target - $this->utf8_length($out[0]['text']) -
                     $this->utf8_length($header) - 2;
-                if ($available >= 150 &&
-                        $available < $this->utf8_length($body) - 150) {
+                if (
+                    $available >= 150 &&
+                        $available < $this->utf8_length($body) - 150
+                ) {
                     $prefix = $this->utf8_substr($body, 0, $available);
                     $wordend = $this->utf8_strrpos($prefix, ' ');
                     if ($wordend !== false && $wordend > 100) {
@@ -675,22 +780,49 @@ class checker implements check_plugin_interface {
             $out[$part]['text'] .= $entry;
             $out[$part]['sources'][$sourceid] = $source;
         }
-        $out = array_values(array_filter($out,
-            static fn(array $item): bool => $item['text'] !== ''));
+        $out = array_values(array_filter(
+            $out,
+            static fn(array $item): bool => $item['text'] !== ''
+        ));
         return $out ?: [$batch];
     }
 
-    /** Ein Cache-Key ist nur fuer genau diesen Kurs/Modell/Prompt/Text gueltig. */
-    private function cache_path(int $courseid, string $model,
-            string $prompt, array $batch): string {
+    /**
+     * Returns the file path of an analysis cached for a specific course, model and text.
+     *
+     * @param int $courseid Course ID.
+     * @param string $model AI model identifier.
+     * @param string $prompt The full analysis prompt.
+     * @param array $batch Source text batch.
+     * @return string
+     */
+    private function cache_path(
+        int $courseid,
+        string $model,
+        string $prompt,
+        array $batch
+    ): string {
         global $CFG;
         $key = hash('sha256', self::CHECKER_VERSION . "\0" . $courseid . "\0" .
             $model . "\0" . $prompt . "\0" . $batch['text']);
         return $CFG->dataroot . '/coursechecker_terminology_cache/' . $key . '.json';
     }
 
-    private function read_cached_analysis(int $courseid, string $model,
-            string $prompt, array $batch): ?array {
+    /**
+     * Reads a valid cached analysis if the cache entry has not expired.
+     *
+     * @param int $courseid Course ID.
+     * @param string $model AI model identifier.
+     * @param string $prompt The full analysis prompt.
+     * @param array $batch Source text batch.
+     * @return array|null Returns the decoded analysis or null if no valid cache entry exists.
+     */
+    private function read_cached_analysis(
+        int $courseid,
+        string $model,
+        string $prompt,
+        array $batch
+    ): ?array {
         $file = $this->cache_path($courseid, $model, $prompt, $batch);
         if (!is_file($file) || filemtime($file) < time() - self::CACHE_TTL_SECONDS) {
             return null;
@@ -698,16 +830,33 @@ class checker implements check_plugin_interface {
         $json = @file_get_contents($file);
         $data = is_string($json) ? json_decode($json, true) : null;
         $analysis = $data['analysis'] ?? null;
-        if (!is_array($analysis) || !isset($analysis['findings']) ||
-                !is_array($analysis['findings']) || !array_is_list($analysis['findings'])) {
+        if (
+            !is_array($analysis) || !isset($analysis['findings']) ||
+                !is_array($analysis['findings']) || !array_is_list($analysis['findings'])
+        ) {
             return null;
         }
         $analysis['terms'] = is_array($analysis['terms'] ?? null) ? $analysis['terms'] : [];
         return $analysis;
     }
 
-    private function write_cached_analysis(int $courseid, string $model,
-            string $prompt, array $batch, array $analysis): void {
+    /**
+     * Stores a successful analysis in the local cache outside the webroot.
+     *
+     * @param int $courseid Course ID.
+     * @param string $model AI model identifier.
+     * @param string $prompt The full analysis prompt.
+     * @param array $batch Source text batch.
+     * @param array $analysis Validated model response.
+     * @return void
+     */
+    private function write_cached_analysis(
+        int $courseid,
+        string $model,
+        string $prompt,
+        array $batch,
+        array $analysis
+    ): void {
         $file = $this->cache_path($courseid, $model, $prompt, $batch);
         $dir = dirname($file);
         // Die PHP-Funktion mkdir() ist hier verfügbar; make_directory() ist
@@ -718,8 +867,10 @@ class checker implements check_plugin_interface {
                 'Ergebnis wird ohne Cache fortgesetzt.');
             return;
         }
-        $json = json_encode(['created' => time(), 'analysis' => $analysis],
-            JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        $json = json_encode(
+            ['created' => time(), 'analysis' => $analysis],
+            JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE
+        );
         if ($json === false) {
             return;
         }
@@ -732,7 +883,14 @@ class checker implements check_plugin_interface {
         }
     }
 
-    /** KI-Antwort prüfen. Rückgabe: [analysis|null, Fehlertext|null]. */
+    /**
+     * Validates and decodes the JSON returned by the AI API.
+     *
+     * @param string $response The raw HTTP response body.
+     * @param int $batchno One-based number of the request batch.
+     * @param string $filename Base name for optional debug output.
+     * @return array Returns the analysis and an optional error message.
+     */
     private function parse_response(string $response, int $batchno, string $filename): array {
         $result = json_decode($response, true);
         $usage = $result['usage'] ?? null;
@@ -751,10 +909,14 @@ class checker implements check_plugin_interface {
         }
         $this->debug_write($filename . '_04_ki_antwort.txt', $answer);
         $analysis = json_decode(trim(preg_replace('/^```(?:json)?\s*|\s*```$/i', '', trim($answer))), true);
-        $this->debug_write($filename . '_05_parsed.json', json_encode($analysis,
-            JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE));
-        if (!is_array($analysis) || !isset($analysis['findings']) ||
-                !is_array($analysis['findings']) || !array_is_list($analysis['findings'])) {
+        $this->debug_write($filename . '_05_parsed.json', json_encode(
+            $analysis,
+            JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE
+        ));
+        if (
+            !is_array($analysis) || !isset($analysis['findings']) ||
+                !is_array($analysis['findings']) || !array_is_list($analysis['findings'])
+        ) {
             return [null, 'Paket ' . $batchno . ': KI-Antwort ist kein gültiges Ergebnis-JSON.'];
         }
         // Alte und neue Modellantworten akzeptieren; terms ist optional.
@@ -763,7 +925,15 @@ class checker implements check_plugin_interface {
         return [$analysis, null];
     }
 
-    /** Erkannte Namen und Verdachtsfälle eines Pakets in Status und Prüfergebnis übernehmen. */
+    /**
+     * Adds validated findings from a batch to the checker results and state.
+     *
+     * @param check $check The checker result record.
+     * @param array $state Current execution state, updated in place.
+     * @param array $batch The source text batch.
+     * @param array $analysis Validated model response.
+     * @return void
+     */
     private function apply_analysis(check $check, array &$state, array $batch, array $analysis): void {
         foreach ($analysis['terms'] as $term) {
             if (!is_string($term)) {
@@ -814,15 +984,23 @@ class checker implements check_plugin_interface {
                     (count($otherlocations) > 4 ? '; weitere ' .
                         (count($otherlocations) - 4) . ' Fundstellen' : '') . ')';
             }
-            $check->add_warning('Terminologie prüfen: ' . $term, '',
+            $check->add_warning(
+                'Terminologie prüfen: ' . $term,
+                '',
                 'Fundstelle: ' . $locationtext . '. Verwendung: ' . $usage .
                 '. Textausschnitt: ' . $context . '. KI-Hinweis: ' . $reason .
-                '. Umbenennung nicht extern verifiziert.');
+                '. Umbenennung nicht extern verifiziert.'
+            );
             $state['findingcount']++;
         }
     }
 
-    /** Wurde für diesen Check schon ein Terminologie-Lauf begonnen? */
+    /**
+     * Checks whether the terminology progress result already exists.
+     *
+     * @param check $check The checker result record.
+     * @return bool
+     */
     private function has_progress_row(check $check): bool {
         foreach ($check->get_results() as $result) {
             if ($result->get('title') === 'Terminologie – Fortschritt') {
@@ -832,6 +1010,12 @@ class checker implements check_plugin_interface {
         return false;
     }
 
+    /**
+     * Formats the current progress information for display in Moodle.
+     *
+     * @param array $state Current execution state.
+     * @return string
+     */
     private function progress_text(array $state): string {
         $phase = $state['phase'] ?? 'main';
         return 'Fortschritt: ' . (int)$state['successful'] . '/' . (int)$state['total'] .
@@ -841,6 +1025,15 @@ class checker implements check_plugin_interface {
             ': noch ' . count($state['queue']) . ' Pakete offen. Prüfung läuft noch.';
     }
 
+    /**
+     * Schedules an ad hoc task to continue the current terminology check.
+     *
+     * @param stdClass $course The Moodle course.
+     * @param check $check The checker result record.
+     * @param array $state Current execution state.
+     * @param int $delay Delay in seconds before the next task.
+     * @return void
+     */
     private function queue_next(stdClass $course, check $check, array $state, int $delay): void {
         global $USER;
         $parent = checker_model::get_record(['id' => (int)$check->get('checker_id')]);
@@ -859,13 +1052,35 @@ class checker implements check_plugin_interface {
         if (!$queued) {
             $this->fail($check, 'Moodle konnte den nächsten Terminologie-Task nicht einreihen.');
             $checkid = (int)$check->get('id');
-            $this->clear_state('job_' . $checkid,
-                'active_course_' . (int)$course->id, $checkid);
+            $this->clear_state(
+                'job_' . $checkid,
+                'active_course_' . (int)$course->id,
+                $checkid
+            );
         }
     }
 
-    private function finish_run(check $check, array $state, string $model,
-            string $provider, string $statekey, string $activekey, int $checkid): void {
+    /**
+     * Finalizes a terminology check and records its completion details.
+     *
+     * @param check $check The checker result record.
+     * @param array $state Current execution state.
+     * @param string $model Selected AI model.
+     * @param string $provider API provider identifier.
+     * @param string $statekey Configuration key for the current job.
+     * @param string $activekey Configuration key for the active course.
+     * @param int $checkid Check ID.
+     * @return void
+     */
+    private function finish_run(
+        check $check,
+        array $state,
+        string $model,
+        string $provider,
+        string $statekey,
+        string $activekey,
+        int $checkid
+    ): void {
         $failed = $state['failed'] ?? [];
         $successful = (int)($state['successful'] ?? 0);
         $total = (int)$state['total'];
@@ -880,8 +1095,10 @@ class checker implements check_plugin_interface {
         mtrace('Terminology: ' . strtoupper($provider) .
             ' / ' . $model . $durationtext);
         if ($failed) {
-            $failednumbers = array_map(static fn($entry): int => (int)$entry['batch'],
-                array_values($failed));
+            $failednumbers = array_map(
+                static fn($entry): int => (int)$entry['batch'],
+                array_values($failed)
+            );
             sort($failednumbers, SORT_NUMERIC);
             $details = implode(', ', $failednumbers);
             $this->update_progress($check, 'UNVOLLSTÄNDIG: ' . $successful . '/' .
@@ -893,7 +1110,9 @@ class checker implements check_plugin_interface {
             $this->update_progress($check, 'Abgeschlossen: ' . $total . '/' .
                 $total . ' Textpakete erfolgreich ausgewertet.');
         }
-        $check->add_successful('Terminologie: Prüfumfang', '',
+        $check->add_successful(
+            'Terminologie: Prüfumfang',
+            '',
             $state['sourcecount'] . ' eindeutige unterstützte Textstellen; ' .
             ($state['duplicatecount'] ?? 0) . ' identische Texte zusammengefasst; ' .
             ($state['skippedplaceholders'] ?? 0) . ' Platzhalter verworfen; ' .
@@ -901,23 +1120,37 @@ class checker implements check_plugin_interface {
             ' vorgesehen; erfolgreich: ' . $successful . '. ' .
             $state['findingcount'] . ' Umbenennungsverdachtsfälle.' .
             $durationtext .
-            ' H5P-Paketinhalte, Quizfragen, Dateien und Nutzerbeiträge NICHT geprüft.');
+            ' H5P-Paketinhalte, Quizfragen, Dateien und Nutzerbeiträge NICHT geprüft.'
+        );
         if ($state['terms']) {
             $termnames = array_keys($state['terms']);
             $visible = array_slice($termnames, 0, 100);
-            $check->add_successful('Diagnose: Erkannte Namen', '',
+            $check->add_successful(
+                'Diagnose: Erkannte Namen',
+                '',
                 implode(', ', $visible) .
                 (count($termnames) > 100 ? ' ... (weitere im Debug-Protokoll)' : '') .
-                '. Die Erkennung bestätigt nicht deren Aktualität.');
+                '. Die Erkennung bestätigt nicht deren Aktualität.'
+            );
         }
         if (!$failed && $state['findingcount'] === 0) {
-            $check->add_successful('Terminologie', '',
+            $check->add_successful(
+                'Terminologie',
+                '',
                 'Keine Verdachtsfälle in den unterstützten Textstellen gefunden. ' .
-                'Das ist keine Bestätigung der Aktualität.');
+                'Das ist keine Bestätigung der Aktualität.'
+            );
         }
         $this->clear_state($statekey, $activekey, $checkid);
     }
 
+    /**
+     * Updates the existing progress result or adds the initial progress result.
+     *
+     * @param check $check The checker result record.
+     * @param string $message Progress message.
+     * @return void
+     */
     private function update_progress(check $check, string $message): void {
         // Nur EINE Fortschrittszeile – nicht eine neue Zeile für jedes Paket.
         foreach ($check->get_results() as $result) {
@@ -931,11 +1164,26 @@ class checker implements check_plugin_interface {
         $check->add_successful('Terminologie – Fortschritt', '', $message);
     }
 
+    /**
+     * Persists the current execution state in Moodle configuration.
+     *
+     * @param string $key Configuration key for this job.
+     * @param array $state Current execution state.
+     * @return void
+     */
     private function save_state(string $key, array $state): void {
         set_config($key, json_encode($state, JSON_UNESCAPED_UNICODE |
             JSON_INVALID_UTF8_SUBSTITUTE), self::COMPONENT);
     }
 
+    /**
+     * Clears the job state and the matching active-course marker.
+     *
+     * @param string $statekey Configuration key for the current job.
+     * @param string $activekey Configuration key for the active course.
+     * @param int $checkid Check ID used for the conditional cleanup.
+     * @return void
+     */
     private function clear_state(string $statekey, string $activekey, int $checkid): void {
         unset_config($statekey, self::COMPONENT);
         if ((int)get_config(self::COMPONENT, $activekey) === $checkid) {
@@ -943,8 +1191,21 @@ class checker implements check_plugin_interface {
         }
     }
 
-    private function debug_overview(int $courseid, array $state,
-            array $batches, string $model): void {
+    /**
+     * Writes a summary of the extracted text batches when debugging is enabled.
+     *
+     * @param int $courseid Course ID.
+     * @param array $state Current execution state.
+     * @param array $batches Prepared request batches.
+     * @param string $model Selected AI model.
+     * @return void
+     */
+    private function debug_overview(
+        int $courseid,
+        array $state,
+        array $batches,
+        string $model
+    ): void {
         if (!self::DEBUG_LLM) {
             return;
         }
@@ -957,8 +1218,10 @@ class checker implements check_plugin_interface {
                 'characters_in_user_batch' => $this->utf8_length($batch['text']),
             ];
         }
-        $this->debug_write('course_' . $courseid . '_' . $state['runid'] . '_00_overview.json',
-            json_encode([
+        $this->debug_write(
+            'course_' . $courseid . '_' . $state['runid'] . '_00_overview.json',
+            json_encode(
+                [
                 'course_id' => $courseid,
                 'model' => $model,
                 'total_unique_text_sources' => $state['sourcecount'],
@@ -968,9 +1231,19 @@ class checker implements check_plugin_interface {
                 'note' => 'Alle unterstützten Pakete sind eingeplant. ' .
                     'Anfragen und Antworten werden pro Paket getrennt gespeichert.',
                 'batches' => $overview,
-            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE));
+                ],
+                JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE
+            )
+        );
     }
 
+    /**
+     * Writes an optional debug artifact when debugging is enabled.
+     *
+     * @param string $filename Name of the debug artifact.
+     * @param string|false|null $content Content to be written.
+     * @return void
+     */
     private function debug_write(string $filename, string|false|null $content): void {
         if (!self::DEBUG_LLM) {
             return;
@@ -994,7 +1267,7 @@ class checker implements check_plugin_interface {
             if ($text === '') {
                 return;
             }
-            // "Neue Lektion" ist ein automatisch angelegter Titel und enthält
+            // Der Titel "Neue Lektion" ist automatisch angelegt und enthält
             // keine prüfbare Organisationsbezeichnung. Nur exakt solche
             // Platzhalter auslassen, NICHT echte Texte mit diesen Wörtern.
             if ($this->is_placeholder($text)) {
@@ -1028,8 +1301,12 @@ class checker implements check_plugin_interface {
         $append('Kursbeschreibung', (string)($course->summary ?? ''));
 
         // Moodle-Kursabschnitte. Funktioniert auch für reguläre Mooin4-Sections.
-        $sections = $DB->get_records('course_sections',
-            ['course' => $course->id], 'section ASC', 'id, section, name, summary');
+        $sections = $DB->get_records(
+            'course_sections',
+            ['course' => $course->id],
+            'section ASC',
+            'id, section, name, summary'
+        );
         foreach ($sections as $section) {
             $loc = 'Abschnitt ' . $section->section;
             $append($loc . ': Titel', (string)($section->name ?? ''));
@@ -1061,8 +1338,11 @@ class checker implements check_plugin_interface {
                 $append($location . ' – Seiteninhalt', (string)$instance->content);
             }
             if ($modname === 'book') {
-                $chapters = $DB->get_records('book_chapters',
-                    ['bookid' => $cm->instance], 'pagenum ASC');
+                $chapters = $DB->get_records(
+                    'book_chapters',
+                    ['bookid' => $cm->instance],
+                    'pagenum ASC'
+                );
                 foreach ($chapters as $chapter) {
                     $chapterloc = $location . ' – Buchkapitel ' . $chapter->pagenum;
                     $append($chapterloc . ': Titel', (string)($chapter->title ?? ''));
@@ -1070,8 +1350,11 @@ class checker implements check_plugin_interface {
                 }
             }
             if ($modname === 'lesson') {
-                $pages = $DB->get_records('lesson_pages',
-                    ['lessonid' => $cm->instance], 'id ASC');
+                $pages = $DB->get_records(
+                    'lesson_pages',
+                    ['lessonid' => $cm->instance],
+                    'id ASC'
+                );
                 foreach ($pages as $page) {
                     $pageloc = $location . ' – Lektionsseite ' . $page->id;
                     $append($pageloc . ': Titel', (string)($page->title ?? ''));
@@ -1082,7 +1365,12 @@ class checker implements check_plugin_interface {
         return $sources;
     }
 
-    /** Nur offensichtlich automatisch generierte, inhaltslose Titel entfernen. */
+    /**
+     * Checks whether a text is a generic placeholder rather than course content.
+     *
+     * @param string $text Extracted text.
+     * @return bool
+     */
     private function is_placeholder(string $text): bool {
         return preg_match(
             '/^(?:[0-9]+(?:\.[0-9]+)*\s*[:.\-]\s*)?(?:Neue\s+Lektion|New\s+Lesson)$/iu',
@@ -1090,7 +1378,12 @@ class checker implements check_plugin_interface {
         ) === 1;
     }
 
-    /** HTML-Markup und technische Skripte entfernen, sichtbaren Text behalten. */
+    /**
+     * Removes markup and non-visible script content from an HTML string.
+     *
+     * @param string $html HTML content.
+     * @return string
+     */
     private function plain_text(string $html): string {
         if ($html === '') {
             return '';
@@ -1104,7 +1397,13 @@ class checker implements check_plugin_interface {
         return trim($text);
     }
 
-    /** Mehrere kurze Texte zu einer kostengünstigen KI-Anfrage bündeln. */
+    /**
+     * Groups source texts into bounded batches for API requests.
+     *
+     * @param array $sources Extracted source texts.
+     * @param int $limit Maximum characters per batch.
+     * @return array
+     */
     private function make_batches(array $sources, int $limit): array {
         $batches = [];
         $text = '';
@@ -1129,7 +1428,13 @@ class checker implements check_plugin_interface {
         return $batches;
     }
 
-    /** Langtext an Wortgrenzen zerlegen; keine Inhalte still abschneiden. */
+    /**
+     * Splits a long source text at word boundaries without dropping content.
+     *
+     * @param string $text Source text.
+     * @param int $limit Maximum characters per part.
+     * @return array
+     */
     private function split_text(string $text, int $limit): array {
         $parts = [];
         while ($this->utf8_length($text) > $limit) {
@@ -1147,6 +1452,13 @@ class checker implements check_plugin_interface {
         return $parts;
     }
 
+    /**
+     * Checks whether a proposed term appears in the extracted source texts.
+     *
+     * @param string $term Term returned by the model.
+     * @param array $sources Extracted source texts.
+     * @return bool
+     */
     private function term_in_sources(string $term, array $sources): bool {
         foreach ($sources as $source) {
             if (stripos($source['text'], $term) !== false) {
@@ -1156,18 +1468,34 @@ class checker implements check_plugin_interface {
         return false;
     }
 
-    /** Zu jeder KI-Warnung einen realen Kurstext zuordnen. */
-    private function find_source(array $sources, string $sourceid,
-            string $term, string $context): ?array {
-        if (isset($sources[$sourceid]) &&
-                stripos($sources[$sourceid]['text'], $term) !== false) {
+    /**
+     * Matches a model finding to a real course text and source location.
+     *
+     * @param array $sources Batch sources indexed by ID.
+     * @param string $sourceid Source ID proposed by the model.
+     * @param string $term Name mentioned in the finding.
+     * @param string $context Quoted text context.
+     * @return array|null Returns a matching source or null if none can be found.
+     */
+    private function find_source(
+        array $sources,
+        string $sourceid,
+        string $term,
+        string $context
+    ): ?array {
+        if (
+            isset($sources[$sourceid]) &&
+                stripos($sources[$sourceid]['text'], $term) !== false
+        ) {
             return $sources[$sourceid];
         }
         // Falls das Modell keine Quellen-ID zurückliefert: Kontext vergleichen.
         if ($context !== '') {
             foreach ($sources as $source) {
-                if (stripos($source['text'], $context) !== false &&
-                        stripos($source['text'], $term) !== false) {
+                if (
+                    stripos($source['text'], $context) !== false &&
+                        stripos($source['text'], $term) !== false
+                ) {
                     return $source;
                 }
             }
@@ -1180,6 +1508,13 @@ class checker implements check_plugin_interface {
         return null;
     }
 
+    /**
+     * Returns a short excerpt around a matching term in the original text.
+     *
+     * @param string $text Original course text.
+     * @param string $term Term to locate.
+     * @return string
+     */
     private function excerpt(string $text, string $term): string {
         $pos = $this->utf8_stripos($text, $term);
         if ($pos === false) {
@@ -1189,12 +1524,25 @@ class checker implements check_plugin_interface {
         return trim($this->utf8_substr($text, $start, 180));
     }
 
-    /** UTF-8-Helfer: Moodle hat normalerweise mbstring, Fallback über iconv. */
+    /**
+     * Returns the Unicode character count of a UTF-8 string.
+     *
+     * @param string $text Text to measure.
+     * @return int
+     */
     private function utf8_length(string $text): int {
         return function_exists('mb_strlen') ?
             mb_strlen($text, 'UTF-8') : (int)iconv_strlen($text, 'UTF-8');
     }
 
+    /**
+     * Returns a substring using UTF-8 character offsets.
+     *
+     * @param string $text Source text.
+     * @param int $start Starting character position.
+     * @param int|null $length Maximum length, or null for the rest of the text.
+     * @return string
+     */
     private function utf8_substr(string $text, int $start, ?int $length = null): string {
         $length = $length ?? $this->utf8_length($text);
         return function_exists('mb_substr') ?
@@ -1202,12 +1550,26 @@ class checker implements check_plugin_interface {
             iconv_substr($text, $start, $length, 'UTF-8');
     }
 
+    /**
+     * Finds the last occurrence of a substring using UTF-8 offsets.
+     *
+     * @param string $text Source text.
+     * @param string $needle Substring to find.
+     * @return int|false Returns the character offset, or false if not found.
+     */
     private function utf8_strrpos(string $text, string $needle): int|false {
         return function_exists('mb_strrpos') ?
             mb_strrpos($text, $needle, 0, 'UTF-8') :
             iconv_strrpos($text, $needle, 'UTF-8');
     }
 
+    /**
+     * Finds a substring case-insensitively using UTF-8 offsets.
+     *
+     * @param string $text Source text.
+     * @param string $needle Substring to find.
+     * @return int|false Returns the character offset, or false if not found.
+     */
     private function utf8_stripos(string $text, string $needle): int|false {
         if (function_exists('mb_stripos')) {
             return mb_stripos($text, $needle, 0, 'UTF-8');
@@ -1217,7 +1579,14 @@ class checker implements check_plugin_interface {
             $this->utf8_length(substr($text, 0, $bytepos));
     }
 
-    /** Speichert Debug-Daten temporär außerhalb des Webroots (ohne API-Schlüssel). */
+    /**
+     * Writes a debug artifact to a protected directory outside the webroot.
+     *
+     * @param string $directory Destination directory.
+     * @param string $filename Name of the debug artifact.
+     * @param string|false $content Artifact content.
+     * @return void
+     */
     private function write_debug_file(string $directory, string $filename, string|false $content): void {
         if ($content === false) {
             throw new \RuntimeException('Debug-Protokoll konnte nicht als JSON kodiert werden.');
@@ -1229,6 +1598,13 @@ class checker implements check_plugin_interface {
         @chmod($path, 0600);
     }
 
+    /**
+     * Marks the current checker result as failed and adds an error message.
+     *
+     * @param check $check The checker result record.
+     * @param string $message Failure description.
+     * @return void
+     */
     private function fail(check $check, string $message): void {
         $check->add_failed('KI-Terminologieprüfung', '', $message);
         $check->set('status', 'failed');
