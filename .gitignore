@@ -20,3 +20,6 @@
 !checker/referencesettings/*
 !checker/subheadings/*
 !checker/userdata/*
+!checker/terminology/
+!checker/terminology/**
+.DS_Store

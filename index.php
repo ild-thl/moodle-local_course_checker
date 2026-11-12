@@ -68,6 +68,7 @@ echo $OUTPUT->header();
 $checkerexists = $output->init($course);
 echo $output->render_header();
 if ($checkerexists) {
+    require_once(__DIR__ . '/checker/terminology/model_selector.php');
     echo $output->render_activity();
     echo $output->render_result();
 }
