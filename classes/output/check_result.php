@@ -63,6 +63,36 @@ class check_result implements renderable, templatable {
             'timestamp' => userdate($this->checkresult->get('timestamp'), '%A, %x %R'),
         ];
 
+        // Decode optional structured output only for CurrentClaims messages.
+        // Never interpret this value as HTML; Mustache escapes its fields.
+        $rawmessage = (string)$this->checkresult->get('message');
+        $marker = "
+[[COURSECHECKER_CURRENTCLAIMS_V1:";
+        $markerposition = strrpos($rawmessage, $marker);
+        if ($markerposition !== false && str_ends_with($rawmessage, ']]')) {
+            $encoded = substr($rawmessage, $markerposition + strlen($marker), -2);
+            if (strlen($encoded) <= 16000) {
+                $json = base64_decode($encoded, true);
+                $structured = $json === false ? null : json_decode($json, true);
+                if (
+                    is_array($structured) &&
+                    isset($structured['original'], $structured['claim'], $structured['status'])
+                ) {
+                    // Source links are URL-scheme-checked before appearing in href attributes.
+                    $sources = [];
+                    foreach ($structured['sources'] ?? [] as $source) {
+                        $url = is_array($source) ? (string)($source['url'] ?? '') : '';
+                        if (str_starts_with($url, 'https://')) {
+                            $sources[] = $source;
+                        }
+                    }
+                    $structured['sources'] = $sources;
+                    $structured['hassources'] = !empty($sources);
+                    $data['currentclaims'] = $structured;
+                    $data['message'] = translation_manager::resolve(substr($rawmessage, 0, $markerposition));
+                }
+            }
+        }
         $data['link_checker_additional'] = $this->get_link_checker_additional();
 
         switch ($this->checkresult->get('status')) {
