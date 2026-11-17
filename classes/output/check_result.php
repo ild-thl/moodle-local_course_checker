@@ -88,7 +88,12 @@ class check_result implements renderable, templatable {
                     }
                     $structured['sources'] = $sources;
                     $structured['hassources'] = !empty($sources);
+                    $structured['locationlinks'] = $this->get_currentclaims_location_links($structured);
+                    $structured['haslocationlinks'] = !empty($structured['locationlinks']);
                     $data['currentclaims'] = $structured;
+                    $data['message'] = translation_manager::resolve(substr($rawmessage, 0, $markerposition));
+                } else if (is_array($structured) && ($structured['manual'] ?? false) === true) {
+                    $data['currentclaimslocationlinks'] = $this->get_currentclaims_location_links($structured);
                     $data['message'] = translation_manager::resolve(substr($rawmessage, 0, $markerposition));
                 }
             }
@@ -115,6 +120,25 @@ class check_result implements renderable, templatable {
                 break;
         }
         return (object)$data;
+    }
+
+    /**
+     * Resolve CurrentClaims locations for the user viewing the saved result.
+     *
+     * @param array $structured Decoded report metadata.
+     * @return array Location labels and permitted Moodle URLs.
+     */
+    private function get_currentclaims_location_links(array $structured): array {
+        if (empty($structured['locationrefs']) || !is_array($structured['locationrefs'])) {
+            return [];
+        }
+        if (!class_exists(\coursechecker_currentclaims\location_links::class)) {
+            return [];
+        }
+        return \coursechecker_currentclaims\location_links::for_report(
+            $structured['locationrefs'],
+            (int)$this->checkresult->get('check_id')
+        );
     }
 
     /**

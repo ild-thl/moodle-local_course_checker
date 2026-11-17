@@ -50,6 +50,8 @@ $string['diagnosticmode_desc'] = 'Nur vorübergehend für Fehlersuche einschalte
     'Keine Zugangsdaten oder Belegtexte. Nach dem Test wieder deaktivieren.';
 $string['display_claim'] = 'Aussage';
 $string['display_location'] = 'Fundstellen';
+$string['display_location_edit'] = 'Inhalt bearbeiten';
+$string['display_location_view'] = 'Zur Fundstelle';
 $string['display_original'] = 'Originaltext';
 $string['display_parts'] = 'Teilbewertungen';
 $string['display_reason'] = 'Begründung';

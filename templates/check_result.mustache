@@ -38,7 +38,33 @@
         {{^link}}</span>{{/link}}{{#link}}</a>{{/link}}
         {{#currentclaims}}
         <section class="mt-2 mb-1" aria-label="{{labelstatus}}">
-            <div class="mb-2 text-body"><strong>{{labellocation}}:</strong> {{locations}}</div>
+            <div class="mb-2 text-body">
+                <strong>{{labellocation}}:</strong>
+                {{^haslocationlinks}}{{locations}}{{/haslocationlinks}}
+                {{#haslocationlinks}}
+                    <ul class="mb-0 ps-3">
+                        {{#locationlinks}}
+                            <li>
+                                <div class="fw-semibold mb-1">{{label}}</div>
+                                    <div class="d-flex flex-wrap gap-3 mb-2">
+                                        {{#viewurl}}
+                                            <a class="text-primary text-decoration-underline" href="{{viewurl}}">
+                                                <i class="fa fa-external-link me-1" aria-hidden="true"></i>
+                                                {{viewlabel}}
+                                            </a>
+                                        {{/viewurl}}
+                                        {{#editurl}}
+                                            <a class="text-primary text-decoration-underline" href="{{editurl}}">
+                                                <i class="fa fa-pencil me-1" aria-hidden="true"></i>
+                                                {{editlabel}}
+                                            </a>
+                                        {{/editurl}}
+                                    </div>
+                            </li>
+                        {{/locationlinks}}
+                    </ul>
+                {{/haslocationlinks}}
+            </div>
             <div class="mb-2 text-body"><strong>{{labeloriginal}}:</strong> {{original}}</div>
             {{#variants}}
                 <div class="mb-1 small text-muted"><strong>{{labelvariants}}:</strong> {{text}}</div>
@@ -86,6 +112,13 @@
         {{^currentclaims}}
         <span class="{{text_class}}">{{message}}</span>
         {{/currentclaims}}
+        {{#currentclaimslocationlinks}}
+            <div class="small mt-1 text-body">
+                {{label}}
+                {{#viewurl}}<a class="ms-2" href="{{viewurl}}">{{viewlabel}}</a>{{/viewurl}}
+                {{#editurl}}<a class="ms-2" href="{{editurl}}">{{editlabel}}</a>{{/editurl}}
+            </div>
+        {{/currentclaimslocationlinks}}
         {{#link_checker_additional}}
             &nbsp;-&nbsp;
             <a href="{{.}}" class="ms-2" target="_blank" rel="noopener" title="{{.}}">

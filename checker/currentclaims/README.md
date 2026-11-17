@@ -362,3 +362,21 @@ Quellenpriorisierung, Belegprüfung und Teilbewertungen ohne Webzugriff. Dadurch
 lassen sich Unterschiede in KI-Antworten von Regressionen in der PHP-Logik
 unterscheiden. Nach dem Test `replaycapture` auf `0` setzen und Aufzeichnungen
 löschen. Die normale Bewertung und das konfigurierte Suchlimit bleiben unverändert.
+
+
+## Direkte Weiterleitung zu Fundstellen (17.11.2026)
+
+Die Ergebnisansicht wurde um direkte Links zu den betroffenen Kursinhalten erweitert. Dadurch müssen Lehrkräfte nicht mehr selbst nach den gefundenen Aussagen im Kurs suchen.
+
+Für jede Fundstelle stehen zwei Möglichkeiten zur Verfügung:
+
+- **Zur Fundstelle:** Öffnet den entsprechenden Kursinhalt.
+- **Inhalt bearbeiten:** Öffnet direkt die zugehörige Bearbeitungsseite, sofern die erforderlichen Moodle-Berechtigungen vorhanden sind.
+
+Wenn dieselbe Aussage an mehreren Stellen im Kurs vorkommt, werden alle Fundstellen einzeln mit ihren jeweiligen Links angezeigt.
+
+Unterstützt werden Kursbeschreibungen, Kursabschnitte, Aktivitäten, Text- und Medienfelder, Buchkapitel und Lektionsseiten.
+
+Die Links werden anhand der internen Moodle-IDs erzeugt. Hierfür sind keine zusätzlichen KI-Anfragen erforderlich. Die Kursinhalte werden weiterhin nicht automatisch verändert.
+
+Die Plugin-Version und die bisherige KI-Logik bleiben unverändert.
