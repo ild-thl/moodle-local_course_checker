@@ -20,3 +20,6 @@
 !checker/referencesettings/*
 !checker/subheadings/*
 !checker/userdata/*
+
+!checker/currentclaims/
+!checker/currentclaims/**

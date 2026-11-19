@@ -36,7 +36,56 @@
         {{#link}}<a href="{{link}}" class="text-reset" target="_blank">{{/link}}{{^link}}<span>{{/link}}
         {{title}}
         {{^link}}</span>{{/link}}{{#link}}</a>{{/link}}
+        {{#currentclaims}}
+        <section class="mt-2 mb-1" aria-label="{{labelstatus}}">
+            <div class="mb-2 text-body"><strong>{{labellocation}}:</strong> {{locations}}</div>
+            <div class="mb-2 text-body"><strong>{{labeloriginal}}:</strong> {{original}}</div>
+            {{#variants}}
+                <div class="mb-1 small text-muted"><strong>{{labelvariants}}:</strong> {{text}}</div>
+            {{/variants}}
+            <div class="mb-2 text-body"><strong>{{labelclaim}}:</strong> {{claim}}</div>
+            <div class="mb-2 {{text_class}}"><strong>{{labelstatus}}:</strong> {{status}}</div>
+            <div class="mb-2 text-body"><strong>{{labelreason}}:</strong> {{reason}}</div>
+            {{#hasparts}}
+                <div class="border rounded p-2 mb-2 text-body">
+                    <strong>{{labelparts}}</strong>
+                    <ul class="mb-0 ps-3">
+                        {{#parts}}
+                            <li>{{label}}: <strong>{{status}}</strong>
+                                {{#url}}<a class="small text-break" href="{{url}}"
+                                    target="_blank" rel="noopener noreferrer">{{url}}</a>{{/url}}
+                            </li>
+                        {{/parts}}
+                    </ul>
+                </div>
+            {{/hasparts}}
+            {{#hascorrection}}
+                <div class="border rounded p-2 mb-2 bg-light text-body">
+                    <strong>{{labelcorrection}}</strong>
+                    <p class="mb-1 mt-1">{{correction}}</p>
+                    <small class="text-muted">{{correctionnotice}}</small>
+                </div>
+            {{/hascorrection}}
+            {{#hassources}}
+                <div class="mt-2 text-body"><strong>{{labelsources}}</strong></div>
+                <ul class="small mb-1 ps-3">
+                    {{#sources}}
+                        <li>
+                            <a href="{{url}}" target="_blank" rel="noopener noreferrer">{{label}}</a>
+                            {{#date}}<span class="text-muted">({{date}})</span>{{/date}}
+                        </li>
+                    {{/sources}}
+                </ul>
+                <small class="text-muted">{{sourcenotice}}</small>
+            {{/hassources}}
+            {{#hasdiagnostic}}
+                <div class="small text-muted mt-2">{{labeldiagnostic}}: {{diagnostic}}</div>
+            {{/hasdiagnostic}}
+        </section>
+        {{/currentclaims}}
+        {{^currentclaims}}
         <span class="{{text_class}}">{{message}}</span>
+        {{/currentclaims}}
         {{#link_checker_additional}}
             &nbsp;-&nbsp;
             <a href="{{.}}" class="ms-2" target="_blank" rel="noopener" title="{{.}}">
