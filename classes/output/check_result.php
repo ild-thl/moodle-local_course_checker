@@ -63,6 +63,41 @@ class check_result implements renderable, templatable {
             'timestamp' => userdate($this->checkresult->get('timestamp'), '%A, %x %R'),
         ];
 
+        // Decode optional structured output only for CurrentClaims messages.
+        // Never interpret this value as HTML; Mustache escapes its fields.
+        $rawmessage = (string)$this->checkresult->get('message');
+        $marker = "
+[[COURSECHECKER_CURRENTCLAIMS_V1:";
+        $markerposition = strrpos($rawmessage, $marker);
+        if ($markerposition !== false && str_ends_with($rawmessage, ']]')) {
+            $encoded = substr($rawmessage, $markerposition + strlen($marker), -2);
+            if (strlen($encoded) <= 16000) {
+                $json = base64_decode($encoded, true);
+                $structured = $json === false ? null : json_decode($json, true);
+                if (
+                    is_array($structured) &&
+                    isset($structured['original'], $structured['claim'], $structured['status'])
+                ) {
+                    // Source links are URL-scheme-checked before appearing in href attributes.
+                    $sources = [];
+                    foreach ($structured['sources'] ?? [] as $source) {
+                        $url = is_array($source) ? (string)($source['url'] ?? '') : '';
+                        if (str_starts_with($url, 'https://')) {
+                            $sources[] = $source;
+                        }
+                    }
+                    $structured['sources'] = $sources;
+                    $structured['hassources'] = !empty($sources);
+                    $structured['locationlinks'] = $this->get_currentclaims_location_links($structured);
+                    $structured['haslocationlinks'] = !empty($structured['locationlinks']);
+                    $data['currentclaims'] = $structured;
+                    $data['message'] = translation_manager::resolve(substr($rawmessage, 0, $markerposition));
+                } else if (is_array($structured) && ($structured['manual'] ?? false) === true) {
+                    $data['currentclaimslocationlinks'] = $this->get_currentclaims_location_links($structured);
+                    $data['message'] = translation_manager::resolve(substr($rawmessage, 0, $markerposition));
+                }
+            }
+        }
         $data['link_checker_additional'] = $this->get_link_checker_additional();
 
         switch ($this->checkresult->get('status')) {
@@ -85,6 +120,25 @@ class check_result implements renderable, templatable {
                 break;
         }
         return (object)$data;
+    }
+
+    /**
+     * Resolve CurrentClaims locations for the user viewing the saved result.
+     *
+     * @param array $structured Decoded report metadata.
+     * @return array Location labels and permitted Moodle URLs.
+     */
+    private function get_currentclaims_location_links(array $structured): array {
+        if (empty($structured['locationrefs']) || !is_array($structured['locationrefs'])) {
+            return [];
+        }
+        if (!class_exists(\coursechecker_currentclaims\location_links::class)) {
+            return [];
+        }
+        return \coursechecker_currentclaims\location_links::for_report(
+            $structured['locationrefs'],
+            (int)$this->checkresult->get('check_id')
+        );
     }
 
     /**
