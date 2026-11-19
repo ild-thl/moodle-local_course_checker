@@ -23,3 +23,7 @@
 
 !checker/currentclaims/
 !checker/currentclaims/**
+
+!checker/terminology/
+!checker/terminology/**
+.DS_Store

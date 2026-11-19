@@ -54,6 +54,29 @@ if ($hassiteconfig) {
         // Define reference course id.
         $visiblename = get_string("settings_referencecourseid", "local_course_checker");
         $settings->add(new admin_setting_courseid_selector('local_course_checker/referencecourseid', $visiblename, '', SITEID));
+
+        // API-Schlüssel für den Terminologie-Checker.
+        $settings->add(new admin_setting_heading(
+            'coursechecker_terminology/api_heading',
+            'Terminologie – KI-Anbieter',
+            'API-Schlüssel für die KI-gestützte Terminologieprüfung.'
+        ));
+
+        // GWDG API-Schlüssel.
+        $settings->add(new admin_setting_configpasswordunmask(
+            'coursechecker_terminology/gwdg_api_key',
+            'GWDG API-Schlüssel',
+            'API-Schlüssel für die GWDG Academic Cloud.',
+            ''
+        ));
+
+        // MyLab API-Schlüssel.
+        $settings->add(new admin_setting_configpasswordunmask(
+            'coursechecker_terminology/mylab_api_key',
+            'MyLab API-Schlüssel',
+            'API-Schlüssel für MyLab der TH Lübeck.',
+            ''
+        ));
     }
     $ADMIN->add('local_course_checker', $settings);
     unset($settings);
