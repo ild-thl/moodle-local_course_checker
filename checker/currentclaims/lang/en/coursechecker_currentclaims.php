@@ -48,6 +48,8 @@ $string['diagnosticmode_desc'] = 'Enable temporarily for troubleshooting. ' .
     'No credentials or evidence excerpts. Disable after testing.';
 $string['display_claim'] = 'Claim';
 $string['display_location'] = 'Locations';
+$string['display_location_edit'] = 'Edit content';
+$string['display_location_view'] = 'Go to location';
 $string['display_original'] = 'Original text';
 $string['display_parts'] = 'Individual checks';
 $string['display_reason'] = 'Reason';

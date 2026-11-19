@@ -307,12 +307,14 @@ class checker implements check_plugin_interface {
                         'sentence' => $sentence,
                         'context' => $this->sentence_context($source['text'], $sentence),
                         'locations' => [],
+                        'locationrefs' => [],
                         'priority' => $this->candidate_priority($sentence),
                         'order' => $order++,
                     ];
                 }
                 if (!in_array($source['location'], $candidates[$key]['locations'], true)) {
                     $candidates[$key]['locations'][] = $source['location'];
+                    $candidates[$key]['locationrefs'][$source['location']] = $source['reference'];
                 }
             }
         }
@@ -349,6 +351,8 @@ class checker implements check_plugin_interface {
                     $merged[$index]['locations'],
                     $candidate['locations']
                 )));
+                $merged[$index]['locationrefs'] = ($merged[$index]['locationrefs'] ?? []) +
+                    ($candidate['locationrefs'] ?? []);
                 if (!in_array($candidate['sentence'], $merged[$index]['variants'], true)) {
                     $merged[$index]['variants'][] = $candidate['sentence'];
                 }
@@ -496,13 +500,18 @@ class checker implements check_plugin_interface {
      * @return void
      */
     private function add_manual_warning(check $check, array $candidate): void {
+        $message = get_string('findingmessage', self::COMPONENT, (object)[
+            'location' => s(implode('; ', $candidate['locations'])),
+            'sentence' => s($candidate['sentence']),
+        ]);
+        $display = [
+            'manual' => true,
+            'locationrefs' => array_values($candidate['locationrefs'] ?? []),
+        ];
         $check->add_warning(
             get_string('findingtitle', self::COMPONENT),
             '',
-            get_string('findingmessage', self::COMPONENT, (object)[
-                'location' => s(implode('; ', $candidate['locations'])),
-                'sentence' => s($candidate['sentence']),
-            ])
+            $this->append_display_data($message, $display)
         );
     }
 
@@ -557,6 +566,8 @@ class checker implements check_plugin_interface {
                     $claims[$duplicateid]['locations'],
                     $selected[$index]['locations']
                 )));
+                $claims[$duplicateid]['locationrefs'] = ($claims[$duplicateid]['locationrefs'] ?? []) +
+                    ($selected[$index]['locationrefs'] ?? []);
                 // Preserve alternative formulations without a second web lookup.
                 $claims[$duplicateid]['variants'] = array_values(array_unique(array_merge(
                     $claims[$duplicateid]['variants'],
@@ -571,6 +582,7 @@ class checker implements check_plugin_interface {
                 'sentence' => $selected[$index]['sentence'],
                 'context' => $selected[$index]['context'],
                 'locations' => $selected[$index]['locations'],
+                'locationrefs' => $selected[$index]['locationrefs'] ?? [],
                 'variants' => $selected[$index]['variants'] ?? [$selected[$index]['sentence']],
                 'claim' => $claim,
                 'query' => $query,
@@ -2463,6 +2475,7 @@ class checker implements check_plugin_interface {
         }
         $display = [
             'locations' => implode('; ', $claim['locations']),
+            'locationrefs' => array_values($claim['locationrefs'] ?? []),
             'original' => $claim['sentence'],
             'variants' => $variants,
             'claim' => $claim['claim'],
@@ -2490,7 +2503,26 @@ class checker implements check_plugin_interface {
             'labelsources' => get_string('sourcelabel', self::COMPONENT),
             'labeldiagnostic' => get_string('diagnosticlabel', self::COMPONENT),
         ];
+        $check->add_warning(
+            get_string('findingtitle', self::COMPONENT),
+            '',
+            $this->append_display_data($message, $display)
+        );
+    }
+
+    /**
+     * Attach optional structured report data to the existing persistent message.
+     *
+     * @param string $message Plain-text fallback.
+     * @param array $display Structured display data.
+     * @return string Message with bounded metadata.
+     */
+    private function append_display_data(string $message, array $display): string {
         $displayjson = json_encode($display, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($displayjson !== false && strlen(base64_encode($displayjson)) > 16000) {
+            unset($display['locationrefs']);
+            $displayjson = json_encode($display, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        }
         if ($displayjson !== false) {
             $encoded = base64_encode($displayjson);
             // Keep the metadata within the size accepted by the parent result parser.
@@ -2498,11 +2530,7 @@ class checker implements check_plugin_interface {
                 $message .= "\n[[COURSECHECKER_CURRENTCLAIMS_V1:" . $encoded . ']]';
             }
         }
-        $check->add_warning(
-            get_string('findingtitle', self::COMPONENT),
-            '',
-            $message
-        );
+        return $message;
     }
 
     /**
@@ -2619,15 +2647,40 @@ class checker implements check_plugin_interface {
         global $DB;
 
         $sources = [];
-        $this->append_source($sources, 'Kursname', (string)($course->fullname ?? ''));
-        $this->append_source($sources, 'Kurzname', (string)($course->shortname ?? ''));
-        $this->append_source($sources, 'Kursbeschreibung', (string)($course->summary ?? ''));
+        $this->append_source(
+            $sources,
+            'Kursname',
+            (string)($course->fullname ?? ''),
+            ['type' => 'course', 'id' => (int)$course->id]
+        );
+        $this->append_source(
+            $sources,
+            'Kurzname',
+            (string)($course->shortname ?? ''),
+            ['type' => 'course', 'id' => (int)$course->id]
+        );
+        $this->append_source(
+            $sources,
+            'Kursbeschreibung',
+            (string)($course->summary ?? ''),
+            ['type' => 'course', 'id' => (int)$course->id]
+        );
 
         $sections = $DB->get_records('course_sections', ['course' => $course->id], 'section ASC');
         foreach ($sections as $section) {
             $label = 'Abschnitt ' . $section->section;
-            $this->append_source($sources, $label . ': Titel', (string)($section->name ?? ''));
-            $this->append_source($sources, $label . ': Beschreibung', (string)($section->summary ?? ''));
+            $this->append_source(
+                $sources,
+                $label . ': Titel',
+                (string)($section->name ?? ''),
+                ['type' => 'section', 'id' => (int)$section->id]
+            );
+            $this->append_source(
+                $sources,
+                $label . ': Beschreibung',
+                (string)($section->summary ?? ''),
+                ['type' => 'section', 'id' => (int)$section->id]
+            );
         }
 
         $modinfo = get_fast_modinfo($course);
@@ -2641,31 +2694,66 @@ class checker implements check_plugin_interface {
             }
 
             $location = 'Aktivität ' . $cm->id . ' (' . $modname . ')';
-            $this->append_source($sources, $location . ': Titel', (string)$cm->name);
+            $this->append_source(
+                $sources,
+                $location . ': Titel',
+                (string)$cm->name,
+                ['type' => 'module', 'id' => (int)$cm->id]
+            );
             $instance = $DB->get_record($modname, ['id' => $cm->instance]);
             if (!$instance) {
                 continue;
             }
             if (property_exists($instance, 'intro')) {
-                $this->append_source($sources, $location . ': Beschreibung', (string)$instance->intro);
+                $this->append_source(
+                    $sources,
+                    $location . ': Beschreibung',
+                    (string)$instance->intro,
+                    ['type' => 'module', 'id' => (int)$cm->id]
+                );
             }
             if ($modname === 'page' && property_exists($instance, 'content')) {
-                $this->append_source($sources, $location . ': Seiteninhalt', (string)$instance->content);
+                $this->append_source(
+                    $sources,
+                    $location . ': Seiteninhalt',
+                    (string)$instance->content,
+                    ['type' => 'module', 'id' => (int)$cm->id]
+                );
             }
             if ($modname === 'book') {
                 $chapters = $DB->get_records('book_chapters', ['bookid' => $cm->instance], 'pagenum ASC');
                 foreach ($chapters as $chapter) {
                     $chapterlocation = $location . ': Buchkapitel ' . $chapter->pagenum;
-                    $this->append_source($sources, $chapterlocation . ': Titel', (string)$chapter->title);
-                    $this->append_source($sources, $chapterlocation . ': Inhalt', (string)$chapter->content);
+                    $this->append_source(
+                        $sources,
+                        $chapterlocation . ': Titel',
+                        (string)$chapter->title,
+                        ['type' => 'book', 'id' => (int)$cm->id, 'itemid' => (int)$chapter->id]
+                    );
+                    $this->append_source(
+                        $sources,
+                        $chapterlocation . ': Inhalt',
+                        (string)$chapter->content,
+                        ['type' => 'book', 'id' => (int)$cm->id, 'itemid' => (int)$chapter->id]
+                    );
                 }
             }
             if ($modname === 'lesson') {
                 $pages = $DB->get_records('lesson_pages', ['lessonid' => $cm->instance], 'id ASC');
                 foreach ($pages as $page) {
                     $pagelocation = $location . ': Lektionsseite ' . $page->id;
-                    $this->append_source($sources, $pagelocation . ': Titel', (string)$page->title);
-                    $this->append_source($sources, $pagelocation . ': Inhalt', (string)$page->contents);
+                    $this->append_source(
+                        $sources,
+                        $pagelocation . ': Titel',
+                        (string)$page->title,
+                        ['type' => 'lesson', 'id' => (int)$cm->id, 'itemid' => (int)$page->id]
+                    );
+                    $this->append_source(
+                        $sources,
+                        $pagelocation . ': Inhalt',
+                        (string)$page->contents,
+                        ['type' => 'lesson', 'id' => (int)$cm->id, 'itemid' => (int)$page->id]
+                    );
                 }
             }
         }
@@ -2679,12 +2767,14 @@ class checker implements check_plugin_interface {
      * @param array $sources Accumulated source records.
      * @param string $location Human-readable course location.
      * @param string $raw Raw title or HTML text.
+     * @param array $reference Internal source type and IDs.
      * @return void
      */
-    private function append_source(array &$sources, string $location, string $raw): void {
+    private function append_source(array &$sources, string $location, string $raw, array $reference): void {
         $text = $this->plain_text($raw);
         if ($text !== '') {
-            $sources[] = ['location' => $location, 'text' => $text];
+            $reference['label'] = $location;
+            $sources[] = ['location' => $location, 'text' => $text, 'reference' => $reference];
         }
     }
 
